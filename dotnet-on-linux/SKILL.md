@@ -11,6 +11,22 @@ This skill is currently a **skeleton with TODOs**. DevOps Engineer fills in as t
 
 The Studio (Putter Forge Studio) backend is .NET 8 + PicoGK. The Studio runs as a Docker container on the same VPS as Paperclip, but in a separate container (Paperclip is Node.js; Studio is .NET).
 
+## Required environment variables
+
+The agent workspace container does **not** have `libicu` installed, so the .NET runtime must run in invariant-globalization mode or it will refuse to start. Export these before any `dotnet` invocation (build, run, test):
+
+```bash
+export PATH="$HOME/.dotnet:$PATH"
+export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+export DOTNET_CLI_TELEMETRY_OPTOUT=1
+```
+
+- `PATH=$HOME/.dotnet:$PATH` — the SDK installs under `$HOME/.dotnet` (no system-wide install).
+- `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` — required because `libicu` is absent; without it, startup fails with `Couldn't find a valid ICU package installed on the system`.
+- `DOTNET_CLI_TELEMETRY_OPTOUT=1` — keep the CLI quiet on first run.
+
+Verified working on the agent workspace container during TAP-39 (2026-05-12). If you later move the build to a base image that ships ICU (e.g. `mcr.microsoft.com/dotnet/sdk:8.0`), the invariant flag is still safe to keep but no longer strictly required.
+
 ## Why .NET 8
 
 - **PicoGK is .NET-native.** Fewer boundary crossings.
