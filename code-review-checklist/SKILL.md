@@ -81,11 +81,52 @@ For UI-bearing Issues:
 
 1. Engineer marks Issue `in_review` and assigns to Code Reviewer.
 2. Code Reviewer reviews against this checklist.
-3. **If all BLOCKING checks pass:** Code Reviewer comments with summary of what was reviewed (link to PR diff, brief verdict). Marks Issue `in_review` → ready for Director (do not mark `done` yet — only the Director can do that for the merge gate).
-4. **If any BLOCKING check fails:** Code Reviewer comments with the specific failures. Marks Issue back to `in_progress` and reassigns to the engineer.
+3. **If all BLOCKING checks pass:** Code Reviewer comments with summary of what was reviewed (link to PR diff, brief verdict), then **posts the `cr-approved` status check on the PR head SHA with `state=success`** (see "cr-approved status check" below). Marks Issue `in_review` → ready for Director (do not mark `done` yet — only the Director can do that for the merge gate).
+4. **If any BLOCKING check fails:** Code Reviewer comments with the specific failures, then **posts the `cr-approved` status check on the PR head SHA with `state=failure`**. Marks Issue back to `in_progress` and reassigns to the engineer.
 5. Director reviews approved Issues, merges to `main` if satisfied, marks `done`.
 
 The Director never bypasses Code Reviewer. The Code Reviewer never marks Issues `done` on `main` directly. Two pairs of eyes on every merge.
+
+## `cr-approved` status check (required on every verdict)
+
+The `main` branch on `MN-Creation/putter-forge-studio` has a branch-protection ruleset that requires a status check named `cr-approved` to be `success` before merge. The Code Reviewer is the sole producer of this status. It MUST be posted on every verdict — APPROVE, CHANGES_REQUESTED, HOLD, or withdraw — on the current PR head SHA, paired with the audit comment. There is no "this PR is too small" exception.
+
+The PAT used by the CR agent has `statuses:write` for this repo (verified 2026-05-21).
+
+Resolve the head SHA and PR URL:
+
+```bash
+HEAD_SHA=$(gh pr view <PR#> -R MN-Creation/putter-forge-studio --json headRefOid -q .headRefOid)
+PR_URL=$(gh pr view <PR#> -R MN-Creation/putter-forge-studio --json url -q .url)
+SHORT_SHA=${HEAD_SHA:0:7}
+```
+
+**APPROVE** → `state=success`:
+
+```bash
+gh api -X POST repos/MN-Creation/putter-forge-studio/statuses/$HEAD_SHA \
+  -f state=success \
+  -f context=cr-approved \
+  -f description="APPROVED by CR @ $SHORT_SHA" \
+  -f target_url="$PR_URL"
+```
+
+**CHANGES_REQUESTED / HOLD / withdraw** → `state=failure`:
+
+```bash
+gh api -X POST repos/MN-Creation/putter-forge-studio/statuses/$HEAD_SHA \
+  -f state=failure \
+  -f context=cr-approved \
+  -f description="<short verdict reason>" \
+  -f target_url="$PR_URL"
+```
+
+Rules:
+
+- `context` MUST be exactly `cr-approved` — must match the ruleset literally.
+- If the engineer pushes new commits after a verdict, the prior status is on the old SHA and no longer gates merge. Re-review and re-post on the new head SHA.
+- If a verdict is withdrawn or revised, post a fresh status on the current head SHA with the new state. Latest status per (sha, context) wins.
+- v2 — posting a formal GitHub `Review` from a non-author PAT — is out of scope. For now the status check IS the merge gate, paired with the comment.
 
 ## What you (Code Reviewer) MUST NOT do
 
