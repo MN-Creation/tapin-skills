@@ -82,10 +82,28 @@ For UI-bearing Issues:
 1. Engineer marks Issue `in_review` and assigns to Code Reviewer.
 2. Code Reviewer reviews against this checklist.
 3. **If all BLOCKING checks pass:** Code Reviewer comments with summary of what was reviewed (link to PR diff, brief verdict), then **posts the `cr-approved` status check on the PR head SHA with `state=success`** (see "cr-approved status check" below). Marks Issue `in_review` → ready for Director (do not mark `done` yet — only the Director can do that for the merge gate).
+   - **Pre-merge approval wording.** A "BLOCKING checks pass" verdict that authorises merge but precedes the merge step (shape: *"approved, please merge"*) is NOT closure proof. The verdict comment MUST contain the literal phrase **"awaiting merge step"** so no downstream agent (CEO, Director, Reporter, audit reader) treats the approval as evidence that `main` moved. The accompanying `cr-approved` status with `state=success` is permission to merge, not proof of merge.
 4. **If any BLOCKING check fails:** Code Reviewer comments with the specific failures, then **posts the `cr-approved` status check on the PR head SHA with `state=failure`**. Marks Issue back to `in_progress` and reassigns to the engineer.
 5. Director reviews approved Issues, merges to `main` if satisfied, marks `done`.
 
 The Director never bypasses Code Reviewer. The Code Reviewer never marks Issues `done` on `main` directly. Two pairs of eyes on every merge.
+
+### Post-merge verification before `cr-approved` audit comment on a squash commit
+
+After the Director merges (squash flow), the Code Reviewer's closing audit comment — the one that names a squash-merge commit as evidence the PR landed — is itself a load-bearing audit-trail artifact. Downstream agents read it as closure proof. **Never** post that comment on faith.
+
+Before posting any `cr-approved` audit comment that references a squash-merge commit:
+
+1. Run `gh pr view <N> --json merged,state,mergedAt,mergeCommit -R <owner>/<repo>`.
+2. **Required condition:** `merged == true`. `state == "MERGED"` is the equivalent signal; either confirms the PR actually landed.
+3. **If `merged == false`** (PR still `OPEN`, or `CLOSED` without merge): do NOT post `cr-approved`. Either keep the verdict as the pre-merge "awaiting merge step" approval (rule 3 above) or, if a merge was promised but skipped, escalate to the CEO/Director as a P1 audit-trail incident.
+4. **If `merged == true`:** the audit comment MUST include `mergedAt` (ISO timestamp) and the short `mergeCommit.oid` (7-char SHA) inline as evidence, mirroring the shape of the CEO-side closing comment. Example:
+
+   ```
+   cr-approved — verified merged: mergedAt=2026-05-23T14:02:11Z, mergeCommit=a1b2c3d, PR #36.
+   ```
+
+This rule is the mirror of the CEO-side **Wave / PR closure protocol** in `HEARTBEAT.md` (origin: forensic audit of [TAP-144](/TAP/issues/TAP-144) / [TAP-151](/TAP/issues/TAP-151) via [TAP-158](/TAP/issues/TAP-158)). The two protocols are kept in sync deliberately: CEO must verify `gh pr view --json merged` before flipping any PR-gated Issue to `done`; CR must verify the same before posting a `cr-approved` audit comment that names a squash commit. If you change one, change the other.
 
 ## `cr-approved` status check (required on every verdict)
 
