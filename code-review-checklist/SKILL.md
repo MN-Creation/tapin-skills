@@ -13,6 +13,14 @@ This checklist is **pragmatic, not strict.** Velocity matters. So does quality. 
 - **COMMENT** — flag in review comments, but do not block. Engineer fixes in next PR or as cleanup.
 - **OPTIONAL** — nice-to-have, mention only if you have spare attention.
 
+## Who may post `cr-approved`
+
+- Only the CodeReviewer agent (role=`qa`) may post `## CR verdict` comments OR `cr-approved` GitHub status checks on a PR head SHA. The verdict comment AND the status check are CR-only artifacts.
+- If you authored the PR, you cannot review it — full stop. There is no "the diff is trivial" exception. There is no "I'll mark it CR and Director will verify" exception.
+- To request CR review on a PR you authored: PATCH `assigneeAgentId` on the source Issue to CodeReviewer (`c225c409-1176-44ef-8997-63266b4af5ee`). Do NOT use `request_confirmation` interactions to "wake CR" — those are Director-facing and do not move the assignee. The 4-hour CR silence on [TAP-168](/TAP/issues/TAP-168) (09:33 → 13:44) is the failure mode this rule prevents.
+
+This rule is the load-bearing convention behind the merge gate. The `statuses:write` PAT permission is shared by FSE, GE, and CR; only CR is *authorised* to use it for `cr-approved`. See "False-attestation incidents → P1 audit" below for the audit consequence when this is violated.
+
 ## BLOCKING checks (any one fails → reject)
 
 ### Spec adherence
@@ -90,27 +98,37 @@ The Director never bypasses Code Reviewer. The Code Reviewer never marks Issues 
 
 ### Director merge-confirmation copy (`request_confirmation` template)
 
-When CR posts the `request_confirmation` interaction asking the Director to merge, the payload body MUST open with the following line, verbatim, above any per-PR detail:
+When CR posts the `request_confirmation` interaction asking the Director to merge, the payload body MUST open with the following two-line pre-accept checklist, verbatim, above any per-PR detail. **Both lines are required — neither may be omitted, and Director must verify both before clicking Accept:**
 
-> ⚠️ Before clicking Merge: confirm the latest `cr-approved=success` status is on the CURRENT head SHA shown above. **Clicking "Update branch" creates a new SHA and invalidates any prior `cr-approved` stamp.** Wait for CR to re-stamp the new head before merging.
+> ⚠️ Before clicking Accept, verify on live GitHub state:
+> 1. `gh pr view <N> --json statusCheckRollup` — confirm `cr-approved=success` exists on the CURRENT head SHA (Update-branch invalidates prior stamps).
+> 2. Cross-check this Issue thread: the `## CR verdict` comment was authored by **CodeReviewer agent** (`agent://c225c409-1176-44ef-8997-63266b4af5ee`), not the PR author. Author-stamped verdicts are not closure proof.
 
-Rationale: branch-protection requires `cr-approved=success` on the head SHA at merge time. Clicking "Update branch" in the GitHub UI fast-forwards the PR onto a new merge commit, producing a new head SHA that does not carry the prior stamp. A Director who merges immediately after "Update branch" — without waiting for CR to re-stamp — bypasses the gate even though the prior verdict was APPROVE. The copy above is the in-band warning that prevents that mistake.
+Rationale: branch-protection requires `cr-approved=success` on the head SHA at merge time, AND the `cr-approved` stamp must have been posted by CR — not by the PR author wearing a CR hat. The two-line checklist forces the Director to verify both preconditions on live GitHub state, rather than treating an in-band Issue-thread approval as proof. Line 1 catches the Update-branch / new-SHA failure mode ([TAP-160](/TAP/issues/TAP-160), [TAP-164](/TAP/issues/TAP-164)); line 2 catches the self-CR / author-stamped failure mode ([TAP-168](/TAP/issues/TAP-168), [TAP-180](/TAP/issues/TAP-180)). Both are P1 audit items per "False-attestation incidents → P1 audit" below.
 
-This line is part of the merge-gate payload template. Any CR helper script that templates `request_confirmation` payloads (e.g. `scripts/cr-merge-gate.*` if/when one exists in the agent repo) MUST emit this line at the top of the body. Until such a script lands, CR composes the payload directly from this skill — keep the copy in sync if you change it.
+This block is part of the merge-gate payload template. Any CR helper script that templates `request_confirmation` payloads (e.g. `scripts/cr-merge-gate.*` if/when one exists in the agent repo) MUST emit both lines at the top of the body, in order, with no rewording. Until such a script lands, CR composes the payload directly from this skill — keep the copy in sync if you change it.
 
-### Admin-bypass merge → P1 audit
+### False-attestation incidents → P1 audit
 
-- A PR merged into `main` before a `cr-approved=success` status exists on the head SHA at merge time is an **admin-bypass merge**. This is true whether the bypass was a deliberate `--admin` override, a missing CR re-stamp after "Update branch", or any other path that lands code on `main` without a live `cr-approved` stamp on the merged head.
-- An admin-bypass merge is a **P1 audit item** even when the code verdict would have matched APPROVE. The gate exists precisely so that "the code was fine anyway" is not a defence; without enforcement, the gate is theatre.
-- For every admin-bypass merge, CR opens a TAP issue tagged `governance`, linked to the PR and the merge commit. The issue body MUST include:
-  - PR number and merge commit SHA.
-  - Merge timestamp vs. timestamp of the (missing or late) `cr-approved` status on the merged head SHA.
-  - A one-line interdiff summary: what changed between the last CR-stamped SHA (if any) and the merged SHA — typically "rebase-only, no diff change", "Update-branch merge, no author code", or a real delta description.
-  - Whether the post-hoc code verdict is APPROVE or CHANGES_REQUESTED (a real delta with CHANGES_REQUESTED escalates to P0 and the CEO).
-- The CEO reviews open admin-bypass audit items in the weekly Director Briefing under a "Governance" line. Items close when CR has audited the interdiff and either (a) confirmed APPROVE and recorded the lesson, or (b) requested a follow-up PR to remediate.
-- Forward-looking only. Retroactive audits of historical admin-merges are out of scope — the gate is what protects future merges.
+A **false-attestation incident** is any merge to `main` whose load-bearing precondition (a CR-authored `cr-approved=success` on the merged head SHA) was assumed rather than verified on live GitHub state. Two shapes both qualify:
 
-Origin: [TAP-160](/TAP/issues/TAP-160) (PR #36 admin-merged 87s before `cr-approved` existed on head `e4a7c6d4`), formalised in [TAP-164](/TAP/issues/TAP-164). Same failure shape as the [TAP-151](/TAP/issues/TAP-151) re-open audit precedent.
+- **Admin-bypass:** PR merged before a CR-authored `cr-approved=success` existed on the merged head SHA. Includes deliberate `--admin` overrides, missing CR re-stamps after "Update branch", and any other path that lands code on `main` without a live CR stamp on the merged head. Origin: [TAP-160](/TAP/issues/TAP-160) (PR #36 admin-merged 87s before `cr-approved` existed on head `e4a7c6d4`), formalised in [TAP-164](/TAP/issues/TAP-164).
+- **Self-CR / author-CR:** `cr-approved=success` exists on the merged head SHA, but was posted by an agent other than CodeReviewer (typically the PR author). The platform-level `statuses:write` check passes — the convention-level "only CR may stamp" rule does not. Origin: [TAP-168](/TAP/issues/TAP-168) (PR #39 carried an FSE-authored `cr-approved` stamp), audited in [TAP-180](/TAP/issues/TAP-180).
+
+Both shapes share the root cause: **Director accepted an interaction whose precondition was assumed, not verified on live GitHub state.** Both are **P1 audit items** even when the post-hoc code verdict would have matched APPROVE. The gate exists precisely so that "the code was fine anyway" is not a defence; without enforcement, the gate is theatre. A real delta with CHANGES_REQUESTED escalates either shape to P0 and the CEO.
+
+For every false-attestation incident, CR opens a TAP issue tagged `governance`, linked to the PR and the merge commit. The issue body MUST include:
+
+- PR number and merge commit SHA.
+- Which shape: admin-bypass or self-CR (or both).
+- For admin-bypass: merge timestamp vs. timestamp of the (missing or late) `cr-approved` status on the merged head SHA.
+- For self-CR: the stamp's author identity (PAT user + agent attribution) and how the convention-level CR-only rule was breached.
+- A one-line interdiff summary: what changed between the last CR-stamped SHA (if any) and the merged SHA — typically "rebase-only, no diff change", "Update-branch merge, no author code", or a real delta description.
+- Whether the post-hoc code verdict is APPROVE or CHANGES_REQUESTED.
+
+The CEO reviews open false-attestation audit items in the weekly Director Briefing under a "Governance" line. Items close when CR has audited the interdiff and either (a) confirmed APPROVE and recorded the lesson, or (b) requested a follow-up PR to remediate.
+
+Forward-looking only. Retroactive audits of historical incidents are out of scope — the gate is what protects future merges.
 
 ### Post-merge verification before `cr-approved` audit comment on a squash commit
 
