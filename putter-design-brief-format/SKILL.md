@@ -142,3 +142,49 @@ After the brief is posted as an issue document with key `design-brief`:
 5. On Director **decline-with-reason**: read the decline, revise the `design-brief` document on the same Issue (update, do not replace — preserve revision history), then raise a fresh `request_confirmation` against the new revision. Stay `in_review`. If revisions exceed two rounds, flag the impasse back to CEO instead of grinding a third revision.
 
 A brief that has not been ratified is not a brief. Do not let GE start work against an unratified draft, even informally on a PR thread.
+
+## §12 — Studio UI exposure requirement
+
+Every design brief must commit, in writing, to how the Director will see the brief's
+deliverable through Studio. This prevents the kernel-only false-close pattern where
+geometry / API lands on `main` but the UI is never updated and the Director cannot
+reach it (TAP-188).
+
+### Required fields
+
+Every brief MUST include this section. It is not optional.
+
+**Studio UI exposure**
+
+- **Surface(s) updated:** which Studio surface(s) expose the deliverable. Examples:
+  - Head-family picker entry (`mallet | blade | tour-blade`)
+  - Parameter panel for a new tunable (slider / numeric input)
+  - Alignment-aid swatch picker
+  - Materials selector
+  - Preview / inspector readout
+- **Minimum UI integration:** the smallest UI change that lets the Director reach
+  the brief output via the iPhone Studio smoke. Specify the click path, e.g.
+  *"open New Design → select tour-blade in head family picker → confirm
+  tour-blade parameter panel renders with default values."*
+- **Director smoke step:** the one action the Director takes to verify the brief
+  landed.
+
+### Kernel-only briefs (opt-out)
+
+Some briefs are intentionally kernel-only — e.g. an internal optimization pass with
+no user-visible surface change. To opt out of UI surfacing, the brief MUST include:
+
+**Kernel-only rationale:** explicit statement of why no UI surface is required,
+plus the alternative verification path the Director will use (CLI command, log
+line, exported file, etc.).
+
+If this field is missing or vague, the default is UI-required and the brief is
+incomplete.
+
+### Why this exists
+
+[TAP-188](/TAP/issues/TAP-188): a tour-blade head family shipped to kernel + API +
+container, but the UI head-family picker still hardcoded `mallet | blade`, so the
+Director could not see it through Studio. Brief scope did not commission UI
+surfacing. §12 prevents recurrence by making UI surfacing a first-class brief
+field, not a follow-on.

@@ -205,3 +205,48 @@ Reviews are written for the engineer agent (and for the Director, who reads the 
 
 - ✅ Good: "BLOCKING: PR doesn't include a unit test for `CalculateMOI`. CEM math without tests is non-mergeable per `code-review-checklist`."
 - ❌ Bad: "Tests would be nice."
+
+## UI-surfacing check (kernel PRs that introduce Director-visible deliverables)
+
+When the PR under review:
+
+- Adds a new putter family or head type (`tour-blade`, `belly`, etc.)
+- Adds a new parameter that ought to be tunable in Studio (face curvature, hosel
+  offset, alignment aid variant, materials, etc.)
+- Adds a new exposed API endpoint that delivers something the Director should see
+
+…CR must check whether there is a **corresponding Studio UI PR** that surfaces the
+deliverable to the Director.
+
+### What "corresponding UI PR" means
+
+- A separate PR (open or merged) against `putter-forge-studio` that updates the UI
+  to reach the deliverable.
+- Typically: head-family picker entry, parameter panel slider, swatch picker
+  option, materials dropdown, etc.
+- The UI Issue should be linked from the kernel Issue (per CEO's
+  `tapin-wave-commissioning` skill — parallel-issue rule).
+
+### What CR does
+
+1. Identify whether the kernel PR introduces a Director-visible deliverable (see
+   triggers above).
+2. If yes: locate the parallel UI Issue (cross-link from the kernel Issue, or
+   search for an FSE Issue with the same brief `parentId`).
+3. **If the UI Issue exists and has a tracked PR** — note its number in the CR
+   verdict comment alongside the kernel PR number. CR's verdict references both:
+   *"kernel PR #N approved; UI surfacing PR #M open / merged / pending."*
+4. **If no UI Issue exists** — flag in the CR verdict comment as *"⚠ kernel-only —
+   no UI-surfacing Issue found. This will produce a [TAP-188](/TAP/issues/TAP-188)-shape
+   false-close unless the brief explicitly opts out per `putter-design-brief-format`
+   §12."* Approval is conditional on either (a) opening the missing UI Issue, or
+   (b) the brief author confirming kernel-only opt-out.
+5. The merge-gate prompt to the Director includes both PR numbers and the
+   verification status of each.
+
+### Why
+
+[TAP-188](/TAP/issues/TAP-188): kernel PR merged; UI never updated; Director could
+not reach the deliverable through Studio. Sibling rule to the post-merge `gh pr
+view --json merged` check — that one prevents the "PR not actually merged" false-
+close shape; this one prevents the "merged but UI-unreachable" shape.
